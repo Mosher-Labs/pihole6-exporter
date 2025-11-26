@@ -24,7 +24,9 @@ class PiholeCollector(object):
 
         if key is not None:
             self.using_auth = True
-            self.sid = self.get_sid(key)
+            session_data = self.get_sid(key)
+            self.sid = session_data['sid']
+            self.csrf = session_data['csrf']
 
         self.type_cnt = {}
         self.status_cnt = {}
@@ -34,19 +36,31 @@ class PiholeCollector(object):
 
     def get_sid(self, key):
         auth_url = f"{self.protocol}://{self.host}:{self.pihole_port}/api/auth"
-        headers = {"accept": "application/json", "content_type": "application/json"}
+        headers = {
+            "accept": "application/json",
+            "content-type": "application/json"
+        }
         json_data = {"password": key}
         req = requests.post(auth_url, verify=False, headers=headers, json=json_data)
 
         reply = req.json()
-        return reply['session']['sid']
+        if 'error' in reply:
+            logging.error(f"Authentication failed: {reply['error']}")
+            raise Exception(f"Authentication failed: {reply['error']['message']}")
+
+        return {
+            'sid': reply['session']['sid'],
+            'csrf': reply['session']['csrf']
+        }
 
     def get_api_call(self, api_path):
         url = f"{self.protocol}://{self.host}:{self.pihole_port}/api/{api_path}"
+        headers = {"accept": "application/json"}
+
         if self.using_auth:
-            headers = {"accept": "application/json", "sid": self.sid}
-        else:
-            headers = {"accept": "application/json"}
+            headers["X-FTL-SID"] = self.sid
+            headers["X-FTL-CSRF"] = self.csrf
+
         req = requests.get(url, verify=False, headers=headers)
 
         return req.json()
