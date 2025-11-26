@@ -251,6 +251,7 @@ class PiholeCollector(object):
 
 
 if __name__ == '__main__':
+    import os
 
     logging.basicConfig(format='level="%(levelname)s" message="%(message)s"', level=logging.INFO)
 
@@ -268,6 +269,10 @@ if __name__ == '__main__':
                         help="authentication token (if required)", default=None)
 
     args = parser.parse_args()
+
+    # Check for API token in environment variable if not provided via CLI
+    if args.key is None:
+        args.key = os.environ.get('PIHOLE_API_TOKEN')
 
     start_http_server(args.port)
     logging.info("Exporter HTTP endpoint started")
