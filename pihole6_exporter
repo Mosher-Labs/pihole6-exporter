@@ -24,6 +24,7 @@ class PiholeCollector(object):
 
         if key is not None:
             self.using_auth = True
+            self.password = key  # Store for re-auth
             session_data = self.get_sid(key)
             self.sid = session_data['sid']
             self.csrf = session_data['csrf']
@@ -61,7 +62,7 @@ class PiholeCollector(object):
             'csrf': reply['session']['csrf']
         }
 
-    def get_api_call(self, api_path):
+    def get_api_call(self, api_path, retry_auth=True):
         url = f"{self.protocol}://{self.host}:{self.pihole_port}/api/{api_path}"
         headers = {"accept": "application/json"}
 
@@ -70,8 +71,18 @@ class PiholeCollector(object):
             headers["X-FTL-CSRF"] = self.csrf
 
         req = requests.get(url, verify=False, headers=headers)
+        reply = req.json()
 
-        return req.json()
+        # If unauthorized and we haven't retried yet, re-authenticate and retry
+        if 'error' in reply and reply['error']['key'] == 'unauthorized' and retry_auth and self.using_auth:
+            logging.warning("Session expired, re-authenticating...")
+            session_data = self.get_sid(self.password)
+            self.sid = session_data['sid']
+            self.csrf = session_data['csrf']
+            # Retry the request once
+            return self.get_api_call(api_path, retry_auth=False)
+
+        return reply
 
     def clear_cnts(self):
         keys = self.type_cnt.keys()
@@ -185,15 +196,16 @@ class PiholeCollector(object):
 
         reply = self.get_api_call("stats/upstreams")
 
-        upstreams = GaugeMetricFamily("pihole_query_upstream_count",
-                                      "Total query upstream counts (24h)", labels=["ip", "name", "port"])
+        if "upstreams" in reply:
+            upstreams = GaugeMetricFamily("pihole_query_upstream_count",
+                                          "Total query upstream counts (24h)", labels=["ip", "name", "port"])
 
-        for item in reply["upstreams"]:
-            labels = [item["ip"], item["name"], str(item["port"])]
-            value = item["count"]
-            upstreams.add_metric(labels, value)
+            for item in reply["upstreams"]:
+                labels = [item["ip"], item["name"], str(item["port"])]
+                value = item["count"]
+                upstreams.add_metric(labels, value)
 
-        yield upstreams
+            yield upstreams
 
         now = datetime.now().strftime("%s")
         last_min = int(now) // 60 * 60
@@ -202,6 +214,10 @@ class PiholeCollector(object):
         reply = self.get_api_call("queries?from=" + str(min_before) + "&until=" + str(last_min) + "&length=1000000")
 
         self.clear_cnts()
+
+        if "queries" not in reply or 'error' in reply:
+            logging.warning("Unable to fetch query details")
+            return
 
         for q in reply["queries"]:
             type = q["type"]
