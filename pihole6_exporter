@@ -41,13 +41,21 @@ class PiholeCollector(object):
             "content-type": "application/json"
         }
         json_data = {"password": key}
+
+        logging.info(f"Authenticating to {auth_url}")
+        logging.debug(f"Password length: {len(key) if key else 0}")
+
         req = requests.post(auth_url, verify=False, headers=headers, json=json_data)
 
+        logging.info(f"Auth response status: {req.status_code}")
         reply = req.json()
+
         if 'error' in reply:
             logging.error(f"Authentication failed: {reply['error']}")
+            logging.error(f"Full response: {reply}")
             raise Exception(f"Authentication failed: {reply['error']['message']}")
 
+        logging.info("Authentication successful")
         return {
             'sid': reply['session']['sid'],
             'csrf': reply['session']['csrf']
