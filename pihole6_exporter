@@ -93,6 +93,15 @@ class PiholeCollector(object):
 
         reply = self.get_api_call("stats/summary")
 
+        # Debug logging
+        logging.info(f"API response keys: {reply.keys() if isinstance(reply, dict) else 'Not a dict'}")
+        if "error" in reply:
+            logging.error(f"API error: {reply['error']}")
+            return
+        if "queries" not in reply:
+            logging.error(f"Missing 'queries' key. Full response: {reply}")
+            return
+
         query_types = GaugeMetricFamily("pihole_query_by_type",
                                         "Count of queries by type (24h)", labels=["query_type"])
 
