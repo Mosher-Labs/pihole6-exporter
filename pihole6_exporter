@@ -134,173 +134,170 @@ class PiholeCollector(object):
             if "queries" not in reply:
                 logging.error(f"Missing 'queries' key. Full response: {reply}")
                 return
-        except Exception as e:
-            logging.error(f"Error in collect: {e}")
-            return
 
-        query_types = GaugeMetricFamily("pihole_query_by_type",
-                                        "Count of queries by type (24h)", labels=["query_type"])
+            query_types = GaugeMetricFamily("pihole_query_by_type",
+                                            "Count of queries by type (24h)", labels=["query_type"])
 
-        for item in reply["queries"]["types"].items():
-            labels = [item[0]]
-            value = item[1]
-            query_types.add_metric(labels, value)
-
-        yield query_types
-
-        status_types = GaugeMetricFamily("pihole_query_by_status",
-                                         "Count of queries by status over 24h", labels=["query_status"])
-
-        for item in reply["queries"]["status"].items():
-            labels = [item[0]]
-            value = item[1]
-            status_types.add_metric(labels, value)
-
-        yield status_types
-
-        reply_types = GaugeMetricFamily("pihole_query_replies",
-                                        "Count of replies by type over 24h", labels=["reply_type"])
-
-        for item in reply["queries"]["replies"].items():
-            labels = [item[0]]
-            value = item[1]
-            reply_types.add_metric(labels, value)
-
-        yield reply_types
-
-        total_counts = GaugeMetricFamily("pihole_query_count",
-                                         "Query counts by category, 24h", labels=["category"])
-
-        total_counts.add_metric(["total"], reply["queries"]["total"])
-        total_counts.add_metric(["blocked"], reply["queries"]["blocked"])
-        total_counts.add_metric(["unique"], reply["queries"]["unique_domains"])
-        total_counts.add_metric(["forwarded"], reply["queries"]["forwarded"])
-        total_counts.add_metric(["cached"], reply["queries"]["cached"])
-
-        yield total_counts
-
-        # Yes, I skipped percent_blocked.  We can calculate that in Grafana.
-        # Better to not provide data that can be derived from other data.
-
-        clients = GaugeMetricFamily("pihole_client_count",
-                                     "Total/active client counts", labels=["category"])
-
-        clients.add_metric(["active"], reply["clients"]["active"])
-        clients.add_metric(["total"], reply["clients"]["total"])
-
-        yield clients
-
-        gravity = GaugeMetricFamily("pihole_domains_being_blocked",
-                                     "Number of domains on current blocklist", labels=[])
-
-        gravity.add_metric([], reply["gravity"]["domains_being_blocked"])
-
-        yield gravity
-
-        reply = self.get_api_call("stats/upstreams")
-
-        if "upstreams" in reply:
-            upstreams = GaugeMetricFamily("pihole_query_upstream_count",
-                                          "Total query upstream counts (24h)", labels=["ip", "name", "port"])
-
-            for item in reply["upstreams"]:
-                labels = [item["ip"], item["name"], str(item["port"])]
-                value = item["count"]
-                upstreams.add_metric(labels, value)
-
-            yield upstreams
-
-        now = datetime.now().strftime("%s")
-        last_min = int(now) // 60 * 60
-        min_before = last_min - 60
-
-        reply = self.get_api_call("queries?from=" + str(min_before) + "&until=" + str(last_min) + "&length=1000000")
-
-        self.clear_cnts()
-
-        if "queries" not in reply or 'error' in reply:
-            logging.warning("Unable to fetch query details")
-            return
-
-        for q in reply["queries"]:
-            type = q["type"]
-            status = q["status"]
-            replytype = q["reply"]["type"]
-            cli_obj = q["client"]
-            name = cli_obj.get("name")
-            ip_addr = cli_obj["ip"]
-            client = f"{name} ({ip_addr})" if name else ip_addr
-            upstream = q["upstream"]
-            if upstream == None:
-                if status == "GRAVITY" or status == "CACHE" or status == "SPECIAL_DOMAIN":
-                    upstream = "None-" + status
+            for item in reply["queries"]["types"].items():
+                labels = [item[0]]
+                value = item[1]
+                query_types.add_metric(labels, value)
+    
+            yield query_types
+    
+            status_types = GaugeMetricFamily("pihole_query_by_status",
+                                             "Count of queries by status over 24h", labels=["query_status"])
+    
+            for item in reply["queries"]["status"].items():
+                labels = [item[0]]
+                value = item[1]
+                status_types.add_metric(labels, value)
+    
+            yield status_types
+    
+            reply_types = GaugeMetricFamily("pihole_query_replies",
+                                            "Count of replies by type over 24h", labels=["reply_type"])
+    
+            for item in reply["queries"]["replies"].items():
+                labels = [item[0]]
+                value = item[1]
+                reply_types.add_metric(labels, value)
+    
+            yield reply_types
+    
+            total_counts = GaugeMetricFamily("pihole_query_count",
+                                             "Query counts by category, 24h", labels=["category"])
+    
+            total_counts.add_metric(["total"], reply["queries"]["total"])
+            total_counts.add_metric(["blocked"], reply["queries"]["blocked"])
+            total_counts.add_metric(["unique"], reply["queries"]["unique_domains"])
+            total_counts.add_metric(["forwarded"], reply["queries"]["forwarded"])
+            total_counts.add_metric(["cached"], reply["queries"]["cached"])
+    
+            yield total_counts
+    
+            # Yes, I skipped percent_blocked.  We can calculate that in Grafana.
+            # Better to not provide data that can be derived from other data.
+    
+            clients = GaugeMetricFamily("pihole_client_count",
+                                         "Total/active client counts", labels=["category"])
+    
+            clients.add_metric(["active"], reply["clients"]["active"])
+            clients.add_metric(["total"], reply["clients"]["total"])
+    
+            yield clients
+    
+            gravity = GaugeMetricFamily("pihole_domains_being_blocked",
+                                         "Number of domains on current blocklist", labels=[])
+    
+            gravity.add_metric([], reply["gravity"]["domains_being_blocked"])
+    
+            yield gravity
+    
+            reply = self.get_api_call("stats/upstreams")
+    
+            if "upstreams" in reply:
+                upstreams = GaugeMetricFamily("pihole_query_upstream_count",
+                                              "Total query upstream counts (24h)", labels=["ip", "name", "port"])
+    
+                for item in reply["upstreams"]:
+                    labels = [item["ip"], item["name"], str(item["port"])]
+                    value = item["count"]
+                    upstreams.add_metric(labels, value)
+    
+                yield upstreams
+    
+            now = datetime.now().strftime("%s")
+            last_min = int(now) // 60 * 60
+            min_before = last_min - 60
+    
+            reply = self.get_api_call("queries?from=" + str(min_before) + "&until=" + str(last_min) + "&length=1000000")
+    
+            self.clear_cnts()
+    
+            if "queries" not in reply or 'error' in reply:
+                logging.warning("Unable to fetch query details")
+                return
+    
+            for q in reply["queries"]:
+                type = q["type"]
+                status = q["status"]
+                replytype = q["reply"]["type"]
+                cli_obj = q["client"]
+                name = cli_obj.get("name")
+                ip_addr = cli_obj["ip"]
+                client = f"{name} ({ip_addr})" if name else ip_addr
+                upstream = q["upstream"]
+                if upstream == None:
+                    if status == "GRAVITY" or status == "CACHE" or status == "SPECIAL_DOMAIN":
+                        upstream = "None-" + status
+                    else:
+                        upstream = "None-OTHER"
+    
+                if type in self.type_cnt:
+                    self.type_cnt[type] += 1
                 else:
-                    upstream = "None-OTHER"
-
-            if type in self.type_cnt:
-                self.type_cnt[type] += 1
-            else:
-                self.type_cnt[type] = 1
-
-            if status in self.status_cnt:
-                self.status_cnt[status] += 1
-            else:
-                self.status_cnt[status] = 1
-
-            if replytype in self.reply_cnt:
-                self.reply_cnt[replytype] += 1
-            else:
-                self.reply_cnt[replytype] = 1
-
-            if client in self.client_cnt:
-                self.client_cnt[client] += 1
-            else:
-                self.client_cnt[client] = 1
-
-            if upstream in self.upstream_cnt:
-                self.upstream_cnt[upstream] += 1
-            else:
-                self.upstream_cnt[upstream] = 1
-
-        q_type = GaugeMetricFamily("pihole_query_type_1m", "Count of query types (last whole 1m)",
-                                   labels=["query_type"])
-        for t in self.type_cnt.items():
-            q_type.add_metric([t[0]], t[1], last_min)
-
-        yield q_type
-
-        q_status = GaugeMetricFamily("pihole_query_status_1m", "Count of query status (last whole 1m)",
-                                     labels=["query_status"])
-        for s in self.status_cnt.items():
-            q_status.add_metric([s[0]], s[1], last_min)
-
-        yield q_status
-
-        q_reply = GaugeMetricFamily("pihole_query_reply_1m", "Count of query reply types (last whole 1m)",
-                                    labels=["query_reply"])
-        for r in self.reply_cnt.items():
-            q_reply.add_metric([r[0]], r[1], last_min)
-
-        yield q_reply
-
-        q_client = GaugeMetricFamily("pihole_query_client_1m", "Count of query clients (last whole 1m)",
-                                     labels=["query_client"])
-        for c in self.client_cnt.items():
-            q_client.add_metric([c[0]], c[1], last_min)
-
-        yield q_client
-
-        q_up = GaugeMetricFamily("pihole_query_upstream_1m", "Count of query upstream destinations (last whole 1m)",
-                                 labels=["query_upstream"])
-        for u in self.upstream_cnt.items():
-            q_up.add_metric([str(u[0])], u[1], last_min)
-
-        yield q_up
-
-        logging.info("scrape completed")
-    except Exception as e:
-        logging.error(f"Error during scrape: {e}")
-        return
+                    self.type_cnt[type] = 1
+    
+                if status in self.status_cnt:
+                    self.status_cnt[status] += 1
+                else:
+                    self.status_cnt[status] = 1
+    
+                if replytype in self.reply_cnt:
+                    self.reply_cnt[replytype] += 1
+                else:
+                    self.reply_cnt[replytype] = 1
+    
+                if client in self.client_cnt:
+                    self.client_cnt[client] += 1
+                else:
+                    self.client_cnt[client] = 1
+    
+                if upstream in self.upstream_cnt:
+                    self.upstream_cnt[upstream] += 1
+                else:
+                    self.upstream_cnt[upstream] = 1
+    
+            q_type = GaugeMetricFamily("pihole_query_type_1m", "Count of query types (last whole 1m)",
+                                       labels=["query_type"])
+            for t in self.type_cnt.items():
+                q_type.add_metric([t[0]], t[1], last_min)
+    
+            yield q_type
+    
+            q_status = GaugeMetricFamily("pihole_query_status_1m", "Count of query status (last whole 1m)",
+                                         labels=["query_status"])
+            for s in self.status_cnt.items():
+                q_status.add_metric([s[0]], s[1], last_min)
+    
+            yield q_status
+    
+            q_reply = GaugeMetricFamily("pihole_query_reply_1m", "Count of query reply types (last whole 1m)",
+                                        labels=["query_reply"])
+            for r in self.reply_cnt.items():
+                q_reply.add_metric([r[0]], r[1], last_min)
+    
+            yield q_reply
+    
+            q_client = GaugeMetricFamily("pihole_query_client_1m", "Count of query clients (last whole 1m)",
+                                         labels=["query_client"])
+            for c in self.client_cnt.items():
+                q_client.add_metric([c[0]], c[1], last_min)
+    
+            yield q_client
+    
+            q_up = GaugeMetricFamily("pihole_query_upstream_1m", "Count of query upstream destinations (last whole 1m)",
+                                     labels=["query_upstream"])
+            for u in self.upstream_cnt.items():
+                q_up.add_metric([str(u[0])], u[1], last_min)
+    
+            yield q_up
+    
+            logging.info("scrape completed")
+        except Exception as e:
+            logging.error(f"Error during scrape: {e}")
+            return
 
 
 if __name__ == '__main__':
