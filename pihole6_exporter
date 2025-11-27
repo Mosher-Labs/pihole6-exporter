@@ -295,12 +295,12 @@ class PiholeCollector(object):
         for u in self.upstream_cnt.items():
             q_up.add_metric([str(u[0])], u[1], last_min)
 
-            yield q_up
+        yield q_up
 
-            logging.info("scrape completed")
-        except Exception as e:
-            logging.error(f"Error during scrape: {e}")
-            return
+        logging.info("scrape completed")
+    except Exception as e:
+        logging.error(f"Error during scrape: {e}")
+        return
 
 
 if __name__ == '__main__':
