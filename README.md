@@ -1,6 +1,13 @@
 # PiHole v6 Exporter
 
+![Docker Pulls](https://img.shields.io/badge/docker-ghcr.io-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+
 Prometheus exporter for Pi-hole version 6, with support for HTTP/HTTPS and configurable ports.
+
+## Why This Exporter?
+
+Pi-hole v6 (released February 2025) introduced session-based authentication, breaking compatibility with existing exporters that used static API tokens. This exporter implements the new authentication flow with automatic session management and re-authentication on expiry.
 
 ## Features
 
@@ -28,13 +35,15 @@ docker run -p 9617:9617 ghcr.io/mosher-labs/pihole6-exporter:latest \
 
 ### Kubernetes
 
+**Important:** Pi-hole v6 limits concurrent API sessions. Use `replicas: 1` to avoid `api_seats_exceeded` errors.
+
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: pihole-exporter
 spec:
-  replicas: 1
+  replicas: 1  # Required: Pi-hole v6 API session limits
   template:
     spec:
       containers:
@@ -87,10 +96,18 @@ All metrics are prefixed with `pihole_`:
 - `pihole_query_client_1m`: Client activity (last minute)
 - `pihole_query_upstream_1m`: Upstream activity (last minute)
 
+## Docker Image
+
+```bash
+docker pull ghcr.io/mosher-labs/pihole6-exporter:latest
+```
+
+Available on GitHub Container Registry with automatic builds on every commit.
+
 ## Credits
 
 Based on [bazmonk/pihole6_exporter](https://github.com/bazmonk/pihole6_exporter) with
-modifications for HTTP support and Kubernetes compatibility.
+modifications for HTTP support, automatic session re-authentication, and Kubernetes compatibility.
 
 ## License
 
