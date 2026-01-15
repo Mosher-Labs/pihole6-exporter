@@ -12,6 +12,9 @@ Pi-hole v6 (released February 2025) introduced session-based authentication, bre
 ## Features
 
 - Compatible with Pi-hole v6 session-based authentication
+- **Graceful shutdown** - Deletes API session on SIGTERM/SIGINT to free up seats
+- **Retry with backoff** - Handles `api_seats_exceeded` errors gracefully
+- Automatic session re-authentication on expiry
 - Configurable protocol (HTTP/HTTPS)
 - Configurable PiHole port
 - Exports comprehensive metrics including:
@@ -35,15 +38,13 @@ docker run -p 9617:9617 ghcr.io/mosher-labs/pihole6-exporter:latest \
 
 ### Kubernetes
 
-**Important:** Pi-hole v6 limits concurrent API sessions. Use `replicas: 1` to avoid `api_seats_exceeded` errors.
-
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: pihole-exporter
 spec:
-  replicas: 1  # Required: Pi-hole v6 API session limits
+  replicas: 1
   template:
     spec:
       containers:
@@ -66,6 +67,28 @@ spec:
             - containerPort: 9617
               name: metrics
 ```
+
+### Running with Multiple Pi-hole Replicas
+
+If you run Pi-hole with multiple replicas (HA setup), you **must** configure
+session affinity on the Pi-hole web service. Pi-hole API sessions are
+instance-specific - a session created on one pod won't work on another.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: pihole-web
+spec:
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800  # 3 hours
+  # ... rest of service config
+```
+
+Without session affinity, the exporter will constantly re-authenticate as
+requests get load-balanced to different Pi-hole pods.
 
 ## Command-Line Arguments
 
@@ -95,6 +118,32 @@ All metrics are prefixed with `pihole_`:
 - `pihole_query_reply_1m`: Reply types (last minute)
 - `pihole_query_client_1m`: Client activity (last minute)
 - `pihole_query_upstream_1m`: Upstream activity (last minute)
+
+## Troubleshooting
+
+### `api_seats_exceeded` Error
+
+Pi-hole v6 limits the number of concurrent API sessions (default: 16). If you
+see this error:
+
+```
+Authentication failed: API seats exceeded
+```
+
+The exporter will automatically retry with exponential backoff (10s, 20s, 40s,
+80s, 160s). To resolve immediately:
+
+1. **Restart Pi-hole** to clear all sessions
+2. **Increase the limit** in Pi-hole's config: `webserver.api.max_sessions`
+
+The exporter now includes graceful shutdown that deletes its session on
+termination, preventing seat exhaustion from pod restarts.
+
+### Constant Re-authentication
+
+If logs show repeated "Session expired, re-authenticating..." messages, you
+likely have multiple Pi-hole replicas without session affinity. See
+[Running with Multiple Pi-hole Replicas](#running-with-multiple-pi-hole-replicas).
 
 ## Docker Image
 
