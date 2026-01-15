@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 import time
+import signal
+import sys
 import requests
 import urllib3
 import argparse
@@ -8,6 +10,9 @@ import logging
 from datetime import datetime
 from prometheus_client.core import GaugeMetricFamily, REGISTRY
 from prometheus_client import start_http_server
+
+# Global collector reference for signal handler
+_collector = None
 
 
 class PiholeCollector(object):
@@ -35,7 +40,7 @@ class PiholeCollector(object):
         self.client_cnt = {}
         self.upstream_cnt = {}
 
-    def get_sid(self, key):
+    def get_sid(self, key, max_retries=5, initial_backoff=10):
         auth_url = f"{self.protocol}://{self.host}:{self.pihole_port}/api/auth"
         headers = {
             "accept": "application/json",
@@ -43,24 +48,58 @@ class PiholeCollector(object):
         }
         json_data = {"password": key}
 
-        logging.info(f"Authenticating to {auth_url}")
-        logging.debug(f"Password length: {len(key) if key else 0}")
+        backoff = initial_backoff
+        for attempt in range(max_retries):
+            logging.info(f"Authenticating to {auth_url} (attempt {attempt + 1}/{max_retries})")
+            logging.debug(f"Password length: {len(key) if key else 0}")
 
-        req = requests.post(auth_url, verify=False, headers=headers, json=json_data)
+            req = requests.post(auth_url, verify=False, headers=headers, json=json_data)
 
-        logging.info(f"Auth response status: {req.status_code}")
-        reply = req.json()
+            logging.info(f"Auth response status: {req.status_code}")
+            reply = req.json()
 
-        if 'error' in reply:
-            logging.error(f"Authentication failed: {reply['error']}")
-            logging.error(f"Full response: {reply}")
-            raise Exception(f"Authentication failed: {reply['error']['message']}")
+            if 'error' in reply:
+                error_key = reply['error'].get('key', '')
+                if error_key == 'api_seats_exceeded':
+                    logging.warning(f"API seats exceeded, waiting {backoff}s before retry...")
+                    time.sleep(backoff)
+                    backoff = min(backoff * 2, 300)  # Exponential backoff, max 5 min
+                    continue
+                logging.error(f"Authentication failed: {reply['error']}")
+                logging.error(f"Full response: {reply}")
+                raise Exception(f"Authentication failed: {reply['error']['message']}")
 
-        logging.info("Authentication successful")
-        return {
-            'sid': reply['session']['sid'],
-            'csrf': reply['session']['csrf']
+            # Success - return session info
+            logging.info("Authentication successful")
+            return {
+                'sid': reply['session']['sid'],
+                'csrf': reply['session']['csrf']
+            }
+
+        # Exhausted all retries
+        raise Exception("Authentication failed: max retries exceeded for api_seats_exceeded")
+
+    def delete_session(self):
+        """Delete the current session to free up API seats."""
+        if not self.using_auth or not hasattr(self, 'sid'):
+            return
+
+        delete_url = f"{self.protocol}://{self.host}:{self.pihole_port}/api/auth"
+        headers = {
+            "accept": "application/json",
+            "X-FTL-SID": self.sid,
+            "X-FTL-CSRF": self.csrf
         }
+
+        try:
+            logging.info("Deleting session to free API seat...")
+            req = requests.delete(delete_url, verify=False, headers=headers)
+            if req.status_code == 204 or req.status_code == 200:
+                logging.info("Session deleted successfully")
+            else:
+                logging.warning(f"Session delete returned status: {req.status_code}")
+        except Exception as e:
+            logging.warning(f"Failed to delete session: {e}")
 
     def get_api_call(self, api_path, retry_auth=True):
         url = f"{self.protocol}://{self.host}:{self.pihole_port}/api/{api_path}"
@@ -300,10 +339,23 @@ class PiholeCollector(object):
             return
 
 
+def shutdown_handler(signum, frame):
+    """Handle shutdown signals gracefully."""
+    global _collector
+    logging.info(f"Received signal {signum}, shutting down...")
+    if _collector is not None:
+        _collector.delete_session()
+    sys.exit(0)
+
+
 if __name__ == '__main__':
     import os
 
     logging.basicConfig(format='level="%(levelname)s" message="%(message)s"', level=logging.INFO)
+
+    # Set up signal handlers for graceful shutdown
+    signal.signal(signal.SIGTERM, shutdown_handler)
+    signal.signal(signal.SIGINT, shutdown_handler)
 
     parser = argparse.ArgumentParser(description="Prometheus exporter for Pi-hole version 6+")
 
@@ -327,7 +379,8 @@ if __name__ == '__main__':
     start_http_server(args.port)
     logging.info("Exporter HTTP endpoint started")
 
-    REGISTRY.register(PiholeCollector(args.host, args.pihole_port, args.protocol, args.key))
+    _collector = PiholeCollector(args.host, args.pihole_port, args.protocol, args.key)
+    REGISTRY.register(_collector)
     logging.info("Ready to collect data")
     while True:
         time.sleep(1)
