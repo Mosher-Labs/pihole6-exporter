@@ -52,7 +52,8 @@ Every dependency is pinned to an immutable hash, not only a version:
   line endings. `.editorconfig` sets this up in most editors, `.gitattributes`
   normalizes line endings in git, and pre-commit fixes anything that slips
   through.
-- **Python:** [ruff](https://docs.astral.sh/ruff/) lint rules in `ruff.toml`.
+- **Python:** [ruff](https://docs.astral.sh/ruff/) lint rules in `ruff.toml`, and
+  `ruff format` for code style.
 - **YAML, Markdown, GitHub Actions, Dockerfile:** yamllint, markdownlint,
   actionlint, and hadolint.
 - **Commit messages:** [Conventional Commits](https://www.conventionalcommits.org/).

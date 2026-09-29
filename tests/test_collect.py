@@ -25,16 +25,23 @@ UPSTREAMS = {"upstreams": [{"ip": "1.1.1.1", "name": "one.one.one.one", "port": 
 
 
 def query(qtype="A", status="FORWARDED", reply="IP", name="laptop", ip="192.168.1.5", upstream="1.1.1.1#53"):
-    return {"type": qtype, "status": status, "reply": {"type": reply},
-            "client": {"name": name, "ip": ip}, "upstream": upstream}
+    return {
+        "type": qtype,
+        "status": status,
+        "reply": {"type": reply},
+        "client": {"name": name, "ip": ip},
+        "upstream": upstream,
+    }
 
 
-QUERIES = {"queries": [
-    query(),
-    query(qtype="AAAA", name=None, ip="192.168.1.9"),
-    query(status="GRAVITY", reply="BLOCKED", upstream=None),
-    query(status="IN_PROGRESS", reply="UNKNOWN", upstream=None),
-]}
+QUERIES = {
+    "queries": [
+        query(),
+        query(qtype="AAAA", name=None, ip="192.168.1.9"),
+        query(status="GRAVITY", reply="BLOCKED", upstream=None),
+        query(status="IN_PROGRESS", reply="UNKNOWN", upstream=None),
+    ]
+}
 
 
 def setUpModule():
@@ -52,6 +59,7 @@ def fake_api(summary=SUMMARY, upstreams=UPSTREAMS, queries=QUERIES):
         if path.startswith("queries?"):
             return queries
         return responses[path]
+
     return call
 
 
@@ -65,7 +73,6 @@ NOW = 1_700_000_123
 
 @mock.patch.object(exporter.time, "time", return_value=NOW)
 class CollectTest(unittest.TestCase):
-
     def test_summary_metrics(self, _time):
         c = collector()
         c.get_api_call = fake_api()
@@ -73,25 +80,25 @@ class CollectTest(unittest.TestCase):
         self.assertEqual(metrics["pihole_query_by_type"], {("A",): 10, ("AAAA",): 5})
         self.assertEqual(metrics["pihole_query_by_status"], {("GRAVITY",): 3, ("FORWARDED",): 12})
         self.assertEqual(metrics["pihole_query_replies"], {("IP",): 13, ("NXDOMAIN",): 2})
-        self.assertEqual(metrics["pihole_query_count"], {
-            ("total",): 15, ("blocked",): 3, ("unique",): 7, ("forwarded",): 12, ("cached",): 0})
+        self.assertEqual(
+            metrics["pihole_query_count"],
+            {("total",): 15, ("blocked",): 3, ("unique",): 7, ("forwarded",): 12, ("cached",): 0},
+        )
         self.assertEqual(metrics["pihole_client_count"], {("active",): 4, ("total",): 6})
         self.assertEqual(metrics["pihole_domains_being_blocked"], {(): 12345})
-        self.assertEqual(metrics["pihole_query_upstream_count"],
-                         {("1.1.1.1", "one.one.one.one", "53"): 12})
+        self.assertEqual(metrics["pihole_query_upstream_count"], {("1.1.1.1", "one.one.one.one", "53"): 12})
 
     def test_per_minute_query_metrics(self, _time):
         c = collector()
         c.get_api_call = fake_api()
         metrics = scrape(c)
         self.assertEqual(metrics["pihole_query_type_1m"], {("A",): 3, ("AAAA",): 1})
-        self.assertEqual(metrics["pihole_query_status_1m"],
-                         {("FORWARDED",): 2, ("GRAVITY",): 1, ("IN_PROGRESS",): 1})
+        self.assertEqual(metrics["pihole_query_status_1m"], {("FORWARDED",): 2, ("GRAVITY",): 1, ("IN_PROGRESS",): 1})
         self.assertEqual(metrics["pihole_query_reply_1m"], {("IP",): 2, ("BLOCKED",): 1, ("UNKNOWN",): 1})
-        self.assertEqual(metrics["pihole_query_client_1m"],
-                         {("laptop (192.168.1.5)",): 3, ("192.168.1.9",): 1})
-        self.assertEqual(metrics["pihole_query_upstream_1m"],
-                         {("1.1.1.1#53",): 2, ("None-GRAVITY",): 1, ("None-OTHER",): 1})
+        self.assertEqual(metrics["pihole_query_client_1m"], {("laptop (192.168.1.5)",): 3, ("192.168.1.9",): 1})
+        self.assertEqual(
+            metrics["pihole_query_upstream_1m"], {("1.1.1.1#53",): 2, ("None-GRAVITY",): 1, ("None-OTHER",): 1}
+        )
 
     def test_queries_window_is_the_last_whole_minute(self, _time):
         c = collector()
@@ -101,6 +108,7 @@ class CollectTest(unittest.TestCase):
         def record(path):
             paths.append(path)
             return api(path)
+
         c.get_api_call = record
         list(c.collect())
         last_min = NOW // 60 * 60
@@ -156,7 +164,6 @@ class CollectTest(unittest.TestCase):
 
 
 class ClearCountsTest(unittest.TestCase):
-
     def test_nonzero_counts_reset_and_zero_counts_removed(self):
         c = collector()
         for counts in (c.type_cnt, c.status_cnt, c.reply_cnt, c.client_cnt, c.upstream_cnt):

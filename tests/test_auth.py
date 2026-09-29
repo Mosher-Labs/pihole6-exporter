@@ -21,7 +21,6 @@ SEATS_EXCEEDED = {"error": {"key": "api_seats_exceeded", "message": "full"}}
 @mock.patch.object(exporter.time, "sleep")
 @mock.patch.object(exporter.requests, "post")
 class GetSidTest(unittest.TestCase):
-
     def test_success_returns_sid_and_csrf(self, post, _sleep):
         post.return_value = response(200, {"session": {"valid": True, "sid": "s", "csrf": "c"}})
         self.assertEqual(collector().get_sid("secret"), {"sid": "s", "csrf": "c"})
@@ -36,14 +35,14 @@ class GetSidTest(unittest.TestCase):
         self.assertEqual(post.call_args.kwargs["timeout"], 3)
 
     def test_wrong_password_without_error_key_raises(self, post, _sleep):
-        post.return_value = response(
-            401, {"session": {"valid": False, "sid": None, "message": "password incorrect"}})
+        post.return_value = response(401, {"session": {"valid": False, "sid": None, "message": "password incorrect"}})
         with self.assertRaisesRegex(Exception, "Authentication failed: password incorrect"):
             collector().get_sid("wrong")
 
     def test_no_password_set_returns_none(self, post, _sleep):
         post.return_value = response(
-            200, {"session": {"valid": True, "sid": None, "validity": -1, "message": "no password set"}})
+            200, {"session": {"valid": True, "sid": None, "validity": -1, "message": "no password set"}}
+        )
         self.assertIsNone(collector().get_sid("secret"))
 
     def test_valid_session_without_csrf_raises(self, post, _sleep):
@@ -102,7 +101,6 @@ class GetSidTest(unittest.TestCase):
 
 @mock.patch.object(exporter.requests, "get")
 class GetApiCallTest(unittest.TestCase):
-
     def test_sends_session_headers_and_timeout(self, get):
         get.return_value = response(200, {"ok": True})
         self.assertEqual(collector().get_api_call("stats/summary"), {"ok": True})
@@ -156,7 +154,6 @@ class GetApiCallTest(unittest.TestCase):
 
 @mock.patch.object(exporter.requests, "delete")
 class DeleteSessionTest(unittest.TestCase):
-
     def test_deletes_session_with_headers(self, delete):
         delete.return_value = response(204, None)
         collector().delete_session()
@@ -180,7 +177,6 @@ class DeleteSessionTest(unittest.TestCase):
 
 @mock.patch.object(exporter.PiholeCollector, "get_sid")
 class ConstructorTest(unittest.TestCase):
-
     def test_without_key_does_not_authenticate(self, get_sid):
         c = exporter.PiholeCollector("h", 80, "http", None)
         get_sid.assert_not_called()

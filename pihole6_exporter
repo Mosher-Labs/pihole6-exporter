@@ -24,13 +24,10 @@ def parse_json(req):
     try:
         return req.json()
     except ValueError:
-        raise Exception(
-            f"Pi-hole returned a non-JSON response (status {req.status_code}): {req.text[:200]}"
-        ) from None
+        raise Exception(f"Pi-hole returned a non-JSON response (status {req.status_code}): {req.text[:200]}") from None
 
 
 class PiholeCollector:
-
     def __init__(self, host="localhost", pihole_port=80, protocol="http", key=None, timeout=DEFAULT_TIMEOUT):
 
         self.using_auth = False
@@ -58,8 +55,8 @@ class PiholeCollector:
             self.using_auth = False
             return
         self.using_auth = True
-        self.sid = session_data['sid']
-        self.csrf = session_data['csrf']
+        self.sid = session_data["sid"]
+        self.csrf = session_data["csrf"]
 
     def get_sid(self, key, max_retries=5, initial_backoff=10):
         """Log in to Pi-hole and return {'sid', 'csrf'}.
@@ -68,10 +65,7 @@ class PiholeCollector:
         session to use. Raises on any other failure.
         """
         auth_url = f"{self.protocol}://{self.host}:{self.pihole_port}/api/auth"
-        headers = {
-            "accept": "application/json",
-            "content-type": "application/json"
-        }
+        headers = {"accept": "application/json", "content-type": "application/json"}
         json_data = {"password": key}
 
         backoff = initial_backoff
@@ -84,10 +78,10 @@ class PiholeCollector:
             logging.info(f"Auth response status: {req.status_code}")
             reply = parse_json(req)
 
-            if 'error' in reply:
-                error = reply['error'] if isinstance(reply['error'], dict) else {'message': str(reply['error'])}
-                error_key = error.get('key', '')
-                if error_key == 'api_seats_exceeded':
+            if "error" in reply:
+                error = reply["error"] if isinstance(reply["error"], dict) else {"message": str(reply["error"])}
+                error_key = error.get("key", "")
+                if error_key == "api_seats_exceeded":
                     logging.warning(f"API seats exceeded, waiting {backoff}s before retry...")
                     time.sleep(backoff)
                     backoff = min(backoff * 2, 300)  # Exponential backoff, max 5 min
@@ -95,39 +89,33 @@ class PiholeCollector:
                 logging.error(f"Authentication failed: {error}")
                 raise Exception(f"Authentication failed: {error.get('message', error_key or 'unknown error')}")
 
-            session = reply.get('session')
-            if req.status_code == 200 and session and session.get('valid') and session.get('sid') is None:
+            session = reply.get("session")
+            if req.status_code == 200 and session and session.get("valid") and session.get("sid") is None:
                 # Pi-hole with no password set accepts every request without a session.
-                logging.warning(f"Pi-hole reports '{session.get('message', 'no password set')}'; "
-                                "continuing without authentication")
+                logging.warning(
+                    f"Pi-hole reports '{session.get('message', 'no password set')}'; continuing without authentication"
+                )
                 return None
 
-            if req.status_code != 200 or not session or not session.get('valid') or 'csrf' not in session:
-                message = (session or {}).get('message', f"unexpected response: {reply}")
+            if req.status_code != 200 or not session or not session.get("valid") or "csrf" not in session:
+                message = (session or {}).get("message", f"unexpected response: {reply}")
                 logging.error(f"Authentication failed (status {req.status_code}): {message}")
                 raise Exception(f"Authentication failed: {message}")
 
             # Success - return session info
             logging.info("Authentication successful")
-            return {
-                'sid': session['sid'],
-                'csrf': session['csrf']
-            }
+            return {"sid": session["sid"], "csrf": session["csrf"]}
 
         # Exhausted all retries
         raise Exception("Authentication failed: max retries exceeded for api_seats_exceeded")
 
     def delete_session(self):
         """Delete the current session to free up API seats."""
-        if not self.using_auth or not hasattr(self, 'sid'):
+        if not self.using_auth or not hasattr(self, "sid"):
             return
 
         delete_url = f"{self.protocol}://{self.host}:{self.pihole_port}/api/auth"
-        headers = {
-            "accept": "application/json",
-            "X-FTL-SID": self.sid,
-            "X-FTL-CSRF": self.csrf
-        }
+        headers = {"accept": "application/json", "X-FTL-SID": self.sid, "X-FTL-CSRF": self.csrf}
 
         try:
             logging.info("Deleting session to free API seat...")
@@ -150,11 +138,11 @@ class PiholeCollector:
         req = requests.get(url, verify=False, headers=headers, timeout=self.timeout)
         reply = parse_json(req)
 
-        error = reply.get('error') if isinstance(reply, dict) else None
-        error_key = error.get('key') if isinstance(error, dict) else None
+        error = reply.get("error") if isinstance(reply, dict) else None
+        error_key = error.get("key") if isinstance(error, dict) else None
 
         # If unauthorized and we haven't retried yet, re-authenticate and retry
-        if error_key == 'unauthorized' and retry_auth and self.using_auth:
+        if error_key == "unauthorized" and retry_auth and self.using_auth:
             logging.warning("Session expired, re-authenticating...")
             self._set_session(self.get_sid(self.password))
             # Retry the request once
@@ -213,8 +201,9 @@ class PiholeCollector:
                 logging.error(f"Missing 'queries' key. Full response: {reply}")
                 return
 
-            query_types = GaugeMetricFamily("pihole_query_by_type",
-                                            "Count of queries by type (24h)", labels=["query_type"])
+            query_types = GaugeMetricFamily(
+                "pihole_query_by_type", "Count of queries by type (24h)", labels=["query_type"]
+            )
 
             for item in reply["queries"]["types"].items():
                 labels = [item[0]]
@@ -223,8 +212,9 @@ class PiholeCollector:
 
             yield query_types
 
-            status_types = GaugeMetricFamily("pihole_query_by_status",
-                                             "Count of queries by status over 24h", labels=["query_status"])
+            status_types = GaugeMetricFamily(
+                "pihole_query_by_status", "Count of queries by status over 24h", labels=["query_status"]
+            )
 
             for item in reply["queries"]["status"].items():
                 labels = [item[0]]
@@ -233,8 +223,9 @@ class PiholeCollector:
 
             yield status_types
 
-            reply_types = GaugeMetricFamily("pihole_query_replies",
-                                            "Count of replies by type over 24h", labels=["reply_type"])
+            reply_types = GaugeMetricFamily(
+                "pihole_query_replies", "Count of replies by type over 24h", labels=["reply_type"]
+            )
 
             for item in reply["queries"]["replies"].items():
                 labels = [item[0]]
@@ -243,8 +234,7 @@ class PiholeCollector:
 
             yield reply_types
 
-            total_counts = GaugeMetricFamily("pihole_query_count",
-                                             "Query counts by category, 24h", labels=["category"])
+            total_counts = GaugeMetricFamily("pihole_query_count", "Query counts by category, 24h", labels=["category"])
 
             total_counts.add_metric(["total"], reply["queries"]["total"])
             total_counts.add_metric(["blocked"], reply["queries"]["blocked"])
@@ -257,16 +247,16 @@ class PiholeCollector:
             # Yes, I skipped percent_blocked.  We can calculate that in Grafana.
             # Better to not provide data that can be derived from other data.
 
-            clients = GaugeMetricFamily("pihole_client_count",
-                                         "Total/active client counts", labels=["category"])
+            clients = GaugeMetricFamily("pihole_client_count", "Total/active client counts", labels=["category"])
 
             clients.add_metric(["active"], reply["clients"]["active"])
             clients.add_metric(["total"], reply["clients"]["total"])
 
             yield clients
 
-            gravity = GaugeMetricFamily("pihole_domains_being_blocked",
-                                         "Number of domains on current blocklist", labels=[])
+            gravity = GaugeMetricFamily(
+                "pihole_domains_being_blocked", "Number of domains on current blocklist", labels=[]
+            )
 
             gravity.add_metric([], reply["gravity"]["domains_being_blocked"])
 
@@ -275,8 +265,9 @@ class PiholeCollector:
             reply = self.get_api_call("stats/upstreams")
 
             if "upstreams" in reply:
-                upstreams = GaugeMetricFamily("pihole_query_upstream_count",
-                                              "Total query upstream counts (24h)", labels=["ip", "name", "port"])
+                upstreams = GaugeMetricFamily(
+                    "pihole_query_upstream_count", "Total query upstream counts (24h)", labels=["ip", "name", "port"]
+                )
 
                 for item in reply["upstreams"]:
                     labels = [item["ip"], item["name"], str(item["port"])]
@@ -292,7 +283,7 @@ class PiholeCollector:
 
             self.clear_cnts()
 
-            if "queries" not in reply or 'error' in reply:
+            if "queries" not in reply or "error" in reply:
                 logging.warning("Unable to fetch query details")
                 return
 
@@ -336,36 +327,43 @@ class PiholeCollector:
                 else:
                     self.upstream_cnt[upstream] = 1
 
-            q_type = GaugeMetricFamily("pihole_query_type_1m", "Count of query types (last whole 1m)",
-                                       labels=["query_type"])
+            q_type = GaugeMetricFamily(
+                "pihole_query_type_1m", "Count of query types (last whole 1m)", labels=["query_type"]
+            )
             for t in self.type_cnt.items():
                 q_type.add_metric([t[0]], t[1], last_min)
 
             yield q_type
 
-            q_status = GaugeMetricFamily("pihole_query_status_1m", "Count of query status (last whole 1m)",
-                                         labels=["query_status"])
+            q_status = GaugeMetricFamily(
+                "pihole_query_status_1m", "Count of query status (last whole 1m)", labels=["query_status"]
+            )
             for s in self.status_cnt.items():
                 q_status.add_metric([s[0]], s[1], last_min)
 
             yield q_status
 
-            q_reply = GaugeMetricFamily("pihole_query_reply_1m", "Count of query reply types (last whole 1m)",
-                                        labels=["query_reply"])
+            q_reply = GaugeMetricFamily(
+                "pihole_query_reply_1m", "Count of query reply types (last whole 1m)", labels=["query_reply"]
+            )
             for r in self.reply_cnt.items():
                 q_reply.add_metric([r[0]], r[1], last_min)
 
             yield q_reply
 
-            q_client = GaugeMetricFamily("pihole_query_client_1m", "Count of query clients (last whole 1m)",
-                                         labels=["query_client"])
+            q_client = GaugeMetricFamily(
+                "pihole_query_client_1m", "Count of query clients (last whole 1m)", labels=["query_client"]
+            )
             for c in self.client_cnt.items():
                 q_client.add_metric([c[0]], c[1], last_min)
 
             yield q_client
 
-            q_up = GaugeMetricFamily("pihole_query_upstream_1m", "Count of query upstream destinations (last whole 1m)",
-                                     labels=["query_upstream"])
+            q_up = GaugeMetricFamily(
+                "pihole_query_upstream_1m",
+                "Count of query upstream destinations (last whole 1m)",
+                labels=["query_upstream"],
+            )
             for u in self.upstream_cnt.items():
                 q_up.add_metric([str(u[0])], u[1], last_min)
 
@@ -389,25 +387,52 @@ def shutdown_handler(signum, frame):
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="Prometheus exporter for Pi-hole version 6+")
 
-    parser.add_argument("-H", "--host", dest="host", type=str, required=False,
-                        help="hostname/ip of pihole instance (default localhost)", default="localhost")
-    parser.add_argument("-p", "--port", dest="port", type=int, required=False,
-                        help="port to expose for scraping (default 9617)", default=9617)
-    parser.add_argument("--pihole-port", dest="pihole_port", type=int, required=False,
-                        help="pihole api port (default 80)", default=80)
-    parser.add_argument("--protocol", dest="protocol", type=str, required=False,
-                        help="protocol to use (http or https, default http)", default="http")
-    parser.add_argument("-k", "--key", dest="key", type=str, required=False,
-                        help="authentication token (if required)", default=None)
-    parser.add_argument("--timeout", dest="timeout", type=float, required=False,
-                        help=f"seconds to wait for each Pi-hole API request (default {DEFAULT_TIMEOUT})",
-                        default=DEFAULT_TIMEOUT)
+    parser.add_argument(
+        "-H",
+        "--host",
+        dest="host",
+        type=str,
+        required=False,
+        help="hostname/ip of pihole instance (default localhost)",
+        default="localhost",
+    )
+    parser.add_argument(
+        "-p",
+        "--port",
+        dest="port",
+        type=int,
+        required=False,
+        help="port to expose for scraping (default 9617)",
+        default=9617,
+    )
+    parser.add_argument(
+        "--pihole-port", dest="pihole_port", type=int, required=False, help="pihole api port (default 80)", default=80
+    )
+    parser.add_argument(
+        "--protocol",
+        dest="protocol",
+        type=str,
+        required=False,
+        help="protocol to use (http or https, default http)",
+        default="http",
+    )
+    parser.add_argument(
+        "-k", "--key", dest="key", type=str, required=False, help="authentication token (if required)", default=None
+    )
+    parser.add_argument(
+        "--timeout",
+        dest="timeout",
+        type=float,
+        required=False,
+        help=f"seconds to wait for each Pi-hole API request (default {DEFAULT_TIMEOUT})",
+        default=DEFAULT_TIMEOUT,
+    )
 
     args = parser.parse_args(argv)
 
     # Check for API token in environment variable if not provided via CLI
     if args.key is None:
-        args.key = os.environ.get('PIHOLE_API_TOKEN')
+        args.key = os.environ.get("PIHOLE_API_TOKEN")
 
     return args
 
@@ -433,5 +458,5 @@ def main(argv=None):
         time.sleep(1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
