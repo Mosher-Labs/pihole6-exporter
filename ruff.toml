@@ -1,0 +1,9 @@
+# The exporter is a script with no .py extension, so name it explicitly.
+extend-include = ["pihole6_exporter"]
+line-length = 120
+target-version = "py314"
+
+[lint]
+# E/W: pycodestyle, including W291/W293 trailing whitespace. F: pyflakes.
+# I: import order. B: bugbear. UP: pyupgrade.
+select = ["E", "W", "F", "I", "B", "UP"]

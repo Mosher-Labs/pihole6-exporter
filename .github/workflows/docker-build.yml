@@ -1,11 +1,9 @@
-name: Build and Push Docker Image
+name: Release and Build Docker Image
 
 on:
   push:
     branches:
       - main
-    tags:
-      - 'v*'
   pull_request:
     branches:
       - main
@@ -14,8 +12,27 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
+permissions: read-all
+
 jobs:
+  # Cuts a semver release from the conventional commit history on main.
+  # Tags created with GITHUB_TOKEN don't trigger other workflows, so the image
+  # build below takes the version from this job instead of a tag push.
+  release:
+    # Fork PRs get a read-only token, so the release job's PR comment would fail.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    uses: "Mosher-Labs/.github/.github/workflows/release.yml@ef07cf67ff3b59d701ca4ebb5670f8579b0b0303"  # v0.10.33
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    secrets: inherit
+
   build-and-push:
+    needs: release
+    # Build even when the release job fails, so the image is still checked on
+    # PRs and main still gets latest and sha- tags. Version tags need a release.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -23,14 +40,14 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
 
       - name: Log in to Container Registry
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v4
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -38,20 +55,22 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302  # v6.2.0
+        env:
+          VERSION: ${{ needs.release.outputs.next_version }}
+          RELEASED: ${{ github.event_name == 'push' && needs.release.result == 'success' && needs.release.outputs.next_version != '' }}
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=ref,event=branch
             type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=sha,prefix=sha-
+            type=semver,pattern={{version}},value=${{ env.VERSION }},enable=${{ env.RELEASED }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ env.VERSION }},enable=${{ env.RELEASED }}
+            type=semver,pattern={{major}},value=${{ env.VERSION }},enable=${{ env.RELEASED }}
+            type=sha,prefix=sha-,format=long
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
         with:
           context: .
           push: ${{ github.event_name != 'pull_request' }}

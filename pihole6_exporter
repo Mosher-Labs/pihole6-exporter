@@ -1,23 +1,37 @@
 #!/usr/bin/env python3
 
-import time
-import signal
-import sys
-import requests
-import urllib3
 import argparse
 import logging
-from datetime import datetime
-from prometheus_client.core import GaugeMetricFamily, REGISTRY
+import os
+import signal
+import sys
+import time
+
+import requests
+import urllib3
 from prometheus_client import start_http_server
+from prometheus_client.core import REGISTRY, GaugeMetricFamily
 
 # Global collector reference for signal handler
 _collector = None
 
+# Seconds to wait for Pi-hole to respond before giving up on a request.
+DEFAULT_TIMEOUT = 10
 
-class PiholeCollector(object):
 
-    def __init__(self, host="localhost", pihole_port=80, protocol="http", key=None):
+def parse_json(req):
+    """Return the decoded JSON body, or raise a readable error if it isn't JSON."""
+    try:
+        return req.json()
+    except ValueError:
+        raise Exception(
+            f"Pi-hole returned a non-JSON response (status {req.status_code}): {req.text[:200]}"
+        ) from None
+
+
+class PiholeCollector:
+
+    def __init__(self, host="localhost", pihole_port=80, protocol="http", key=None, timeout=DEFAULT_TIMEOUT):
 
         self.using_auth = False
         # Disable if you've actually got a good cert set up.
@@ -26,13 +40,11 @@ class PiholeCollector(object):
         self.host = host
         self.pihole_port = pihole_port
         self.protocol = protocol
+        self.timeout = timeout
 
         if key is not None:
-            self.using_auth = True
             self.password = key  # Store for re-auth
-            session_data = self.get_sid(key)
-            self.sid = session_data['sid']
-            self.csrf = session_data['csrf']
+            self._set_session(self.get_sid(key))
 
         self.type_cnt = {}
         self.status_cnt = {}
@@ -40,7 +52,21 @@ class PiholeCollector(object):
         self.client_cnt = {}
         self.upstream_cnt = {}
 
+    def _set_session(self, session_data):
+        """Store a session from get_sid. None means Pi-hole needs no authentication."""
+        if session_data is None:
+            self.using_auth = False
+            return
+        self.using_auth = True
+        self.sid = session_data['sid']
+        self.csrf = session_data['csrf']
+
     def get_sid(self, key, max_retries=5, initial_backoff=10):
+        """Log in to Pi-hole and return {'sid', 'csrf'}.
+
+        Returns None when Pi-hole has no password set, since there is no
+        session to use. Raises on any other failure.
+        """
         auth_url = f"{self.protocol}://{self.host}:{self.pihole_port}/api/auth"
         headers = {
             "accept": "application/json",
@@ -53,23 +79,29 @@ class PiholeCollector(object):
             logging.info(f"Authenticating to {auth_url} (attempt {attempt + 1}/{max_retries})")
             logging.debug(f"Password length: {len(key) if key else 0}")
 
-            req = requests.post(auth_url, verify=False, headers=headers, json=json_data)
+            req = requests.post(auth_url, verify=False, headers=headers, json=json_data, timeout=self.timeout)
 
             logging.info(f"Auth response status: {req.status_code}")
-            reply = req.json()
+            reply = parse_json(req)
 
             if 'error' in reply:
-                error_key = reply['error'].get('key', '')
+                error = reply['error'] if isinstance(reply['error'], dict) else {'message': str(reply['error'])}
+                error_key = error.get('key', '')
                 if error_key == 'api_seats_exceeded':
                     logging.warning(f"API seats exceeded, waiting {backoff}s before retry...")
                     time.sleep(backoff)
                     backoff = min(backoff * 2, 300)  # Exponential backoff, max 5 min
                     continue
-                logging.error(f"Authentication failed: {reply['error']}")
-                logging.error(f"Full response: {reply}")
-                raise Exception(f"Authentication failed: {reply['error']['message']}")
+                logging.error(f"Authentication failed: {error}")
+                raise Exception(f"Authentication failed: {error.get('message', error_key or 'unknown error')}")
 
             session = reply.get('session')
+            if req.status_code == 200 and session and session.get('valid') and session.get('sid') is None:
+                # Pi-hole with no password set accepts every request without a session.
+                logging.warning(f"Pi-hole reports '{session.get('message', 'no password set')}'; "
+                                "continuing without authentication")
+                return None
+
             if req.status_code != 200 or not session or not session.get('valid') or 'csrf' not in session:
                 message = (session or {}).get('message', f"unexpected response: {reply}")
                 logging.error(f"Authentication failed (status {req.status_code}): {message}")
@@ -99,7 +131,7 @@ class PiholeCollector(object):
 
         try:
             logging.info("Deleting session to free API seat...")
-            req = requests.delete(delete_url, verify=False, headers=headers)
+            req = requests.delete(delete_url, verify=False, headers=headers, timeout=self.timeout)
             if req.status_code == 204 or req.status_code == 200:
                 logging.info("Session deleted successfully")
             else:
@@ -115,15 +147,16 @@ class PiholeCollector(object):
             headers["X-FTL-SID"] = self.sid
             headers["X-FTL-CSRF"] = self.csrf
 
-        req = requests.get(url, verify=False, headers=headers)
-        reply = req.json()
+        req = requests.get(url, verify=False, headers=headers, timeout=self.timeout)
+        reply = parse_json(req)
+
+        error = reply.get('error') if isinstance(reply, dict) else None
+        error_key = error.get('key') if isinstance(error, dict) else None
 
         # If unauthorized and we haven't retried yet, re-authenticate and retry
-        if 'error' in reply and reply['error']['key'] == 'unauthorized' and retry_auth and self.using_auth:
+        if error_key == 'unauthorized' and retry_auth and self.using_auth:
             logging.warning("Session expired, re-authenticating...")
-            session_data = self.get_sid(self.password)
-            self.sid = session_data['sid']
-            self.csrf = session_data['csrf']
+            self._set_session(self.get_sid(self.password))
             # Retry the request once
             return self.get_api_call(api_path, retry_auth=False)
 
@@ -252,8 +285,7 @@ class PiholeCollector(object):
 
                 yield upstreams
 
-            now = datetime.now().strftime("%s")
-            last_min = int(now) // 60 * 60
+            last_min = int(time.time()) // 60 * 60
             min_before = last_min - 60
 
             reply = self.get_api_call("queries?from=" + str(min_before) + "&until=" + str(last_min) + "&length=1000000")
@@ -265,7 +297,7 @@ class PiholeCollector(object):
                 return
 
             for q in reply["queries"]:
-                type = q["type"]
+                query_type = q["type"]
                 status = q["status"]
                 replytype = q["reply"]["type"]
                 cli_obj = q["client"]
@@ -273,16 +305,16 @@ class PiholeCollector(object):
                 ip_addr = cli_obj["ip"]
                 client = f"{name} ({ip_addr})" if name else ip_addr
                 upstream = q["upstream"]
-                if upstream == None:
+                if upstream is None:
                     if status == "GRAVITY" or status == "CACHE" or status == "SPECIAL_DOMAIN":
                         upstream = "None-" + status
                     else:
                         upstream = "None-OTHER"
 
-                if type in self.type_cnt:
-                    self.type_cnt[type] += 1
+                if query_type in self.type_cnt:
+                    self.type_cnt[query_type] += 1
                 else:
-                    self.type_cnt[type] = 1
+                    self.type_cnt[query_type] = 1
 
                 if status in self.status_cnt:
                     self.status_cnt[status] += 1
@@ -354,15 +386,7 @@ def shutdown_handler(signum, frame):
     sys.exit(0)
 
 
-if __name__ == '__main__':
-    import os
-
-    logging.basicConfig(format='level="%(levelname)s" message="%(message)s"', level=logging.INFO)
-
-    # Set up signal handlers for graceful shutdown
-    signal.signal(signal.SIGTERM, shutdown_handler)
-    signal.signal(signal.SIGINT, shutdown_handler)
-
+def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="Prometheus exporter for Pi-hole version 6+")
 
     parser.add_argument("-H", "--host", dest="host", type=str, required=False,
@@ -375,18 +399,39 @@ if __name__ == '__main__':
                         help="protocol to use (http or https, default http)", default="http")
     parser.add_argument("-k", "--key", dest="key", type=str, required=False,
                         help="authentication token (if required)", default=None)
+    parser.add_argument("--timeout", dest="timeout", type=float, required=False,
+                        help=f"seconds to wait for each Pi-hole API request (default {DEFAULT_TIMEOUT})",
+                        default=DEFAULT_TIMEOUT)
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     # Check for API token in environment variable if not provided via CLI
     if args.key is None:
         args.key = os.environ.get('PIHOLE_API_TOKEN')
 
+    return args
+
+
+def main(argv=None):
+    global _collector
+
+    logging.basicConfig(format='level="%(levelname)s" message="%(message)s"', level=logging.INFO)
+
+    # Set up signal handlers for graceful shutdown
+    signal.signal(signal.SIGTERM, shutdown_handler)
+    signal.signal(signal.SIGINT, shutdown_handler)
+
+    args = parse_args(argv)
+
     start_http_server(args.port)
     logging.info("Exporter HTTP endpoint started")
 
-    _collector = PiholeCollector(args.host, args.pihole_port, args.protocol, args.key)
+    _collector = PiholeCollector(args.host, args.pihole_port, args.protocol, args.key, args.timeout)
     REGISTRY.register(_collector)
     logging.info("Ready to collect data")
     while True:
         time.sleep(1)
+
+
+if __name__ == '__main__':
+    main()

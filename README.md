@@ -7,7 +7,10 @@ Prometheus exporter for Pi-hole version 6, with support for HTTP/HTTPS and confi
 
 ## Why This Exporter?
 
-Pi-hole v6 (released February 2025) introduced session-based authentication, breaking compatibility with existing exporters that used static API tokens. This exporter implements the new authentication flow with automatic session management and re-authentication on expiry.
+Pi-hole v6 (released February 2025) introduced session-based authentication,
+breaking compatibility with existing exporters that used static API tokens. This
+exporter implements the new authentication flow with automatic session
+management and re-authentication on expiry.
 
 ## Features
 
@@ -97,6 +100,12 @@ requests get load-balanced to different Pi-hole pods.
 - `--pihole-port`: PiHole API port (default: 80)
 - `--protocol`: Protocol to use - http or https (default: http)
 - `-k, --key`: Authentication token (optional, for authenticated PiHole instances)
+- `--timeout`: Seconds to wait for each Pi-hole API request (default: 10). A
+  Pi-hole that stops responding fails the scrape after this long instead of
+  hanging it.
+
+If you pass a token but the Pi-hole has no password set, the exporter logs a
+warning and continues without authentication.
 
 ## Environment Variables
 
@@ -126,7 +135,7 @@ All metrics are prefixed with `pihole_`:
 Pi-hole v6 limits the number of concurrent API sessions (default: 16). If you
 see this error:
 
-```
+```text
 Authentication failed: API seats exceeded
 ```
 
@@ -151,7 +160,15 @@ likely have multiple Pi-hole replicas without session affinity. See
 docker pull ghcr.io/mosher-labs/pihole6-exporter:latest
 ```
 
-Available on GitHub Container Registry with automatic builds on every commit.
+Available on GitHub Container Registry. Every merge to `main` is built and
+tagged `latest` and `sha-<commit>`. Merges that cut a release are also tagged
+with the version (`1.2.3`, `1.2`, `1`). Pin a version tag or digest in
+production rather than `latest`. The image runs as the unprivileged `nobody`
+user.
+
+## Development
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, tests, and linting.
 
 ## Credits
 
