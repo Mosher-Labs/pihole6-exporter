@@ -17,19 +17,36 @@ def tearDownModule():
 
 
 class ParseArgsTest(unittest.TestCase):
-
     @mock.patch.dict(os.environ, {}, clear=True)
     def test_defaults(self):
         args = exporter.parse_args([])
-        self.assertEqual((args.host, args.port, args.pihole_port, args.protocol, args.key, args.timeout),
-                         ("localhost", 9617, 80, "http", None, exporter.DEFAULT_TIMEOUT))
+        self.assertEqual(
+            (args.host, args.port, args.pihole_port, args.protocol, args.key, args.timeout),
+            ("localhost", 9617, 80, "http", None, exporter.DEFAULT_TIMEOUT),
+        )
 
     @mock.patch.dict(os.environ, {}, clear=True)
     def test_flags(self):
-        args = exporter.parse_args(["-H", "pihole", "-p", "9000", "--pihole-port", "8080",
-                                    "--protocol", "https", "-k", "cli-key", "--timeout", "2.5"])
-        self.assertEqual((args.host, args.port, args.pihole_port, args.protocol, args.key, args.timeout),
-                         ("pihole", 9000, 8080, "https", "cli-key", 2.5))
+        args = exporter.parse_args(
+            [
+                "-H",
+                "pihole",
+                "-p",
+                "9000",
+                "--pihole-port",
+                "8080",
+                "--protocol",
+                "https",
+                "-k",
+                "cli-key",
+                "--timeout",
+                "2.5",
+            ]
+        )
+        self.assertEqual(
+            (args.host, args.port, args.pihole_port, args.protocol, args.key, args.timeout),
+            ("pihole", 9000, 8080, "https", "cli-key", 2.5),
+        )
 
     @mock.patch.dict(os.environ, {"PIHOLE_API_TOKEN": "env-key"}, clear=True)
     def test_key_falls_back_to_environment(self):
@@ -51,9 +68,7 @@ class StopLoop(Exception):
 @mock.patch.object(exporter, "PiholeCollector")
 @mock.patch.object(exporter, "start_http_server")
 class MainTest(unittest.TestCase):
-
-    def test_starts_server_and_registers_collector(self, start_http_server, collector_cls, register, _sleep,
-                                                   signal_fn):
+    def test_starts_server_and_registers_collector(self, start_http_server, collector_cls, register, _sleep, signal_fn):
         with self.assertRaises(StopLoop):
             exporter.main(["-H", "pihole", "-p", "9000", "-k", "secret", "--timeout", "3"])
         start_http_server.assert_called_once_with(9000)
@@ -65,7 +80,6 @@ class MainTest(unittest.TestCase):
 
 
 class ShutdownHandlerTest(unittest.TestCase):
-
     def test_deletes_session_and_exits(self):
         c = mock.Mock()
         with mock.patch.object(exporter, "_collector", c), self.assertRaises(SystemExit) as exit_:
