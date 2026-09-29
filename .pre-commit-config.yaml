@@ -5,7 +5,7 @@ default_install_hook_types:
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v6.0.0
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
     hooks:
       - id: check-added-large-files
       - id: check-case-conflict
@@ -24,27 +24,35 @@ repos:
         args: [--fix=lf]
       - id: trailing-whitespace
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.9
+    rev: a56c0b927e6465d37cae3e97d35d4d18ab2b96cd  # frozen: v0.16.9
     hooks:
       - id: ruff-check
   - repo: https://github.com/adrienverge/yamllint
-    rev: v1.38.0
+    rev: cba56bcde1fdd01c1deb3f945e69764c291a6530  # frozen: v1.38.0
     hooks:
       - id: yamllint
-  - repo: https://github.com/igorshubovych/markdownlint-cli
-    rev: v0.49.1
+  # The upstream Docker hooks pull their images by tag (hadolint's pulls
+  # :latest), so run the same images as local hooks pinned by digest.
+  - repo: local
     hooks:
       - id: markdownlint-docker
-  - repo: https://github.com/rhysd/actionlint
-    rev: v1.7.12
-    hooks:
+        name: markdownlint
+        language: docker_image
+        types: [markdown]
+        entry: ghcr.io/igorshubovych/markdownlint-cli:v0.49.1@sha256:905baf9f6bd11da2ede8c394882c616509385f24b8b8d54fff6e111be88f39de
       - id: actionlint-docker
-  - repo: https://github.com/hadolint/hadolint
-    rev: v2.15.1
-    hooks:
+        name: Lint GitHub Actions workflow files
+        language: docker_image
+        types: [yaml]
+        files: ^\.github/workflows/
+        entry: docker.io/rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
       - id: hadolint-docker
+        name: Lint Dockerfiles
+        language: docker_image
+        types: [dockerfile]
+        entry: ghcr.io/hadolint/hadolint:v2.15.1@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d hadolint
   - repo: https://github.com/compilerla/conventional-pre-commit
-    rev: v4.4.0
+    rev: 91ab4bf57e58b32adf1a122681f6ebe164d081c8  # frozen: v4.4.0
     hooks:
       - id: conventional-pre-commit
         stages: [commit-msg]

@@ -1,0 +1,6 @@
+# Runtime dependencies. Edit this file, then regenerate requirements.txt:
+#   pip-compile --generate-hashes --allow-unsafe --strip-extras --no-emit-index-url requirements.in
+# (pip-tools 7.6.1, run on the same Python as the Dockerfile base image)
+prometheus_client==0.26.0
+requests==2.34.2
+urllib3==2.8.0

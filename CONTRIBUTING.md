@@ -16,7 +16,8 @@ pre-commit install
 ```
 
 `pre-commit install` sets up both the `pre-commit` and `commit-msg` hooks, so
-every commit is checked before it is created.
+every commit is checked before it is created. The linters, ruff included, run
+through pre-commit, so `requirements-dev.txt` only adds the test tools.
 
 ## Running the checks
 
@@ -30,6 +31,20 @@ pre-commit run --all-files
 ```
 
 The tests mock every HTTP call, so you do not need a Pi-hole to run them.
+
+## Pinning
+
+Every dependency is pinned to an immutable hash, not only a version:
+
+- **Python packages:** `requirements.txt` and `requirements-dev.txt` list every
+  package, including transitive ones, with `--hash` values, and are installed
+  with `pip install --require-hashes`. Edit `requirements.in` or
+  `requirements-dev.in`, then regenerate with the `pip-compile` command at the
+  top of that file.
+- **Container images:** the Dockerfile base image and the Docker-based
+  pre-commit hooks use `image:tag@sha256:<digest>`.
+- **GitHub Actions and pre-commit hooks:** a full commit SHA with the version in
+  a trailing comment, for example `rev: <sha>  # frozen: v6.0.0`.
 
 ## What the checks enforce
 

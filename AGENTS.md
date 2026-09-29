@@ -27,8 +27,10 @@ and load the script by path through `tests/support.py`.
 
 - **Test every behavior change.** Mock HTTP with `unittest.mock`; never call a
   real Pi-hole from tests. A bug fix needs a test that fails without the fix.
-- **Keep dependencies pinned** to exact versions in `requirements.txt` and
-  `requirements-dev.txt`. Do not add a dependency without a clear need.
+- **Keep dependencies pinned by hash.** Change `requirements*.in`, then
+  regenerate the matching `.txt` with `pip-compile --generate-hashes` (see the
+  file header); never hand-edit the `.txt` files. Container images use
+  `tag@sha256:<digest>`. Do not add a dependency without a clear need.
 - **Pin GitHub Actions** and reusable workflows to a full commit SHA with the
   version in a trailing comment, for example
   `actions/checkout@<sha> # v7.0.1`.

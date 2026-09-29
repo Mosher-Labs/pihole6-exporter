@@ -5,5 +5,7 @@ rules:
   line-length:
     ignore:
       - .github/workflows
+      # Digest-pinned hook images don't fit in 80 columns.
+      - .pre-commit-config.yaml
   truthy:
     check-keys: false

@@ -1,0 +1,5 @@
+# Test dependencies. Edit this file, then regenerate requirements-dev.txt:
+#   pip-compile --generate-hashes --allow-unsafe --strip-extras --no-emit-index-url requirements-dev.in
+# (pip-tools 7.6.1, run on the same Python as the Dockerfile base image)
+-r requirements.in
+coverage==7.16.2
