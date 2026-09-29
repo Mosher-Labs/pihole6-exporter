@@ -24,7 +24,9 @@ jobs:
           python-version: "3.14"
 
       - name: Install dependencies
-        run: pip install prometheus_client==0.26.0 requests==2.34.2 urllib3==2.8.0
+        run: pip install -r requirements-dev.txt
 
-      - name: Run unit tests
-        run: python -m unittest discover -s tests -v
+      - name: Run unit tests with coverage
+        run: |
+          coverage run --include=pihole6_exporter -m unittest discover -s tests -v
+          coverage report -m --fail-under=95
