@@ -1,0 +1,5 @@
+# Commits that only reformat code. GitHub's blame view skips these automatically;
+# locally, run: git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# style: format with ruff and mark the exporter executable (#14)
+61c7e474be72d028765519f0ffdb39be64e282e6
