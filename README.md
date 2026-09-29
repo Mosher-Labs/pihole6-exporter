@@ -153,6 +153,16 @@ docker pull ghcr.io/mosher-labs/pihole6-exporter:latest
 
 Available on GitHub Container Registry with automatic builds on every commit.
 
+## Development
+
+Unit tests cover authentication and session re-authentication. They mock all HTTP calls,
+so no Pi-hole is needed:
+
+```bash
+pip install prometheus_client requests urllib3
+python -m unittest discover -s tests -v
+```
+
 ## Credits
 
 Based on [bazmonk/pihole6_exporter](https://github.com/bazmonk/pihole6_exporter) with
