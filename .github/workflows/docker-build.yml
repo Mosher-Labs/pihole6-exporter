@@ -21,7 +21,7 @@ jobs:
   release:
     # Fork PRs get a read-only token, so the release job's PR comment would fail.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    uses: "Mosher-Labs/.github/.github/workflows/release.yml@541b3d3c9182820bec7f027fb9c61a5c17974ed8"  # v0.10.35
+    uses: "Mosher-Labs/.github/.github/workflows/release.yml@959e22a07499324e8f241f57678172b35f12a9d4"  # v0.10.36
     permissions:
       contents: write
       issues: write
