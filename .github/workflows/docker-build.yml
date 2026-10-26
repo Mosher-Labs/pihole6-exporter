@@ -21,7 +21,7 @@ jobs:
   release:
     # Fork PRs get a read-only token, so the release job's PR comment would fail.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    uses: "Mosher-Labs/.github/.github/workflows/release.yml@5c525704f2a00d0541a59d53a78662a980a4a130"  # v0.12.1
+    uses: "Mosher-Labs/.github/.github/workflows/release.yml@23786977ca9999f6e48a6753ead26f70e79821cf"  # v0.12.2
     permissions:
       contents: write
       issues: write
@@ -47,7 +47,7 @@ jobs:
 
       - name: Log in to Container Registry
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6  # v4.7.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
