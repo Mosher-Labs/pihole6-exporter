@@ -1,4 +1,4 @@
-FROM python:3.15.2-alpine@sha256:827d76cd0da4f700a703df95e7a70fec2ecc7fa9fd528638ab2e8aa96fbf8e0e
+FROM python:3.15.2-alpine@sha256:a0f2e268f2ce8f3709611a90054ec6a8ae31f6251f5896b8648b9bb99835e30a
 
 # Install dependencies pinned by version and hash
 COPY requirements.txt /tmp/requirements.txt
